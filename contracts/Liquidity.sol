@@ -306,7 +306,7 @@ contract Liquidity {
     {
         address from = msg.sender;
         require(
-            block.timestamp >= (deposits[from].depositTime).add(60), //(30 * 24 * 3600),
+            block.timestamp >= (deposits[from].depositTime).add(10), //(30 * 24 * 3600),
             "Requesting before lock time"
         );
         require(deposits[from].paid == false, "Already paid out");
@@ -391,7 +391,7 @@ contract Liquidity {
     // }
 
     modifier _positive(uint256 amount) {
-        require(amount >= 0, "Negative amount");
+        require(amount > 0, "Negative amount");
         _;
     }
 

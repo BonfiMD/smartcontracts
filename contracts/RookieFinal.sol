@@ -200,7 +200,7 @@ library SafeMath {
 
 pragma solidity ^0.5.8;
 
-contract Rookie {
+contract RookieFinal {
     using SafeMath for uint256;
 
     struct Deposits {
@@ -241,10 +241,8 @@ contract Rookie {
 
     function addReward(uint256 rewardAmount)
         public
-        returns (
-            //_hasAllowance(msg.sender, rewardAmount)
-            bool
-        )
+        _hasAllowance(msg.sender, rewardAmount)
+        returns (bool)
     {
         require(rewardAmount > 0, "Reward must be positive");
         address from = msg.sender;
@@ -300,7 +298,7 @@ contract Rookie {
     {
         address from = msg.sender;
         require(
-            block.timestamp >= (deposits[from].depositTime).add(60), //(30 * 24 * 3600),
+            block.timestamp >= (deposits[from].depositTime).add(10), //(30 * 24 * 3600),
             "Requesting before lock time"
         );
         require(deposits[from].paid == false, "Already paid out");
@@ -339,10 +337,8 @@ contract Rookie {
     function _stake(address staker, uint256 amount)
         private
         _positive(amount)
-        returns (
-            //_hasAllowance(staker, amount)
-            bool
-        )
+        _hasAllowance(staker, amount)
+        returns (bool)
     {
         if (!_payMe(staker, amount)) {
             return false;
@@ -366,13 +362,7 @@ contract Rookie {
         address allower,
         address receiver,
         uint256 amount
-    )
-        private
-        returns (
-            //_hasAllowance(allower, amount)
-            bool
-        )
-    {
+    ) private _hasAllowance(allower, amount) returns (bool) {
         // Request to transfer amount from the contract to receiver.
         // contract does not own the funds, so the allower must have added allowance to the contract
         // Allower is the original owner.
@@ -395,17 +385,17 @@ contract Rookie {
     // }
 
     modifier _positive(uint256 amount) {
-        require(amount >= 0, "Negative amount");
+        require(amount > 0, "Negative amount");
         _;
     }
 
-    // modifier _hasAllowance(address allower, uint256 amount) {
-    //     // Make sure the allower has provided the right allowance.
-    //     ERC20Interface = IERC20(tokenAddress);
-    //     uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
-    //     require(amount <= ourAllowance, "Make sure to add enough allowance");
-    //     _;
-    // }
+    modifier _hasAllowance(address allower, uint256 amount) {
+        // Make sure the allower has provided the right allowance.
+        ERC20Interface = IERC20(tokenAddress);
+        uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
+        require(amount <= ourAllowance, "Make sure to add enough allowance");
+        _;
+    }
 
     modifier _staked(address from) {
         //to check the user status

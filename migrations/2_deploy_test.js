@@ -1,0 +1,9 @@
+const RookieFinal = artifacts.require("RookieFinal");
+const Token = artifacts.require("Token");
+
+module.exports = function(deployer) {
+  const totalSupply = 100000000000000000000;
+  deployer.deploy(Token, "MineToken", "MNT", 18, totalSupply.toString(), '0x23eD969565C43586C80a126E68d75237936A902e').then(() => {
+    return deployer.deploy(RookieFinal, "Rookie", Token.address);
+  })
+};
