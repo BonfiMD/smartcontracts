@@ -200,13 +200,85 @@ library SafeMath {
 
 pragma solidity ^0.5.0;
 
-contract Liquidity {
+/**
+ * @dev Contract module which provides a basic access control mechanism, where
+ * there is an account (an owner) that can be granted exclusive access to
+ * specific functions.
+ *
+ * By default, the owner account will be the one that deploys the contract. This
+ * can later be changed with {transferOwnership}.
+ *
+ * This module is used through inheritance. It will make available the modifier
+ * `onlyOwner`, which can be applied to your functions to restrict their use to
+ * the owner.
+ */
+contract Ownable {
+    address private _owner;
+
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
+    constructor() internal {
+        _owner = msg.sender;
+        emit OwnershipTransferred(address(0), msg.sender);
+    }
+
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(_owner == msg.sender, "Ownable: caller is not the owner");
+        _;
+    }
+
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * `onlyOwner` functions anymore. Can only be called by the current owner.
+     *
+     * NOTE: Renouncing ownership will leave the contract without an owner,
+     * thereby removing any functionality that is only available to the owner.
+     */
+    function renounceOwnership() public onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Can only be called by the current owner.
+     */
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(
+            newOwner != address(0),
+            "Ownable: new owner is the zero address"
+        );
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
+}
+
+pragma solidity ^0.5.0;
+
+contract Liquidity is Ownable {
     using SafeMath for uint256;
 
     struct Deposits {
         address depositor;
         uint256 depositAmount;
         uint256 depositTime;
+        uint256 interestRate;
         bool paid;
     }
 
@@ -220,12 +292,15 @@ contract Liquidity {
     uint256 public totalReward;
     uint256 public rewardBalance;
     uint256 public stakedBalance;
+    uint256 public minStakeAmount;
+    uint256 public rate;
+    uint256 public lockduration;
 
     IERC20 public ERC20Interface;
     event Staked(
         address indexed token,
         address indexed staker_,
-        uint256 requestedAmount_
+        uint256 stakedAmount_
     );
     event PaidOut(
         address indexed token,
@@ -235,16 +310,39 @@ contract Liquidity {
         uint256 reward_
     );
 
+    /**
+     *   @param
+     *   name_, name of the contract
+     *   tokenAddress_, contract address of the token
+     *   rewardTokenAddress_, contract address of the reward token
+     *   rate_, rate multiplied by 100
+     *   lockduration_, duration in days
+     */
+
     constructor(
         string memory name_,
         address tokenAddress_,
-        address rewardTokenAddress_
-    ) public {
+        address rewardTokenAddress_,
+        uint256 rate_,
+        uint256 lockduration_
+    ) public Ownable() {
         name = name_;
         require(tokenAddress_ != address(0), "Token address: 0 address");
         tokenAddress = tokenAddress_;
         require(rewardTokenAddress_ != address(0), "Token address: 0 address");
         rewardTokenAddress = rewardTokenAddress_;
+        require(rate_ != 0, "Zero interest rate");
+        rate = rate_;
+        lockduration = lockduration_;
+    }
+
+    function setMinStakeAmount(uint256 amount_) public onlyOwner {
+        minStakeAmount = amount_;
+    }
+
+    function setRate(uint256 rate_) public onlyOwner {
+        require(rate_ != 0, "Zero interest rate");
+        rate = rate_;
     }
 
     function addReward(uint256 rewardAmount)
@@ -270,6 +368,7 @@ contract Liquidity {
         returns (
             uint256,
             uint256,
+            uint256,
             bool
         )
     {
@@ -277,6 +376,7 @@ contract Liquidity {
         return (
             deposits[user].depositAmount,
             deposits[user].depositTime,
+            deposits[user].interestRate,
             deposits[user].paid
         );
     }
@@ -285,45 +385,37 @@ contract Liquidity {
      * Requirements:
      * - `amount` Amount to be staked
      */
-    function stake(uint256 amount)
-        public
-        _positive(amount)
-        returns (
-            //_realAddress(msg.sender)
-            bool
-        )
-    {
+    function stake(uint256 amount) public _minStake(amount) returns (bool) {
         address from = msg.sender;
         require(hasStaked[from] == false, "Already staked");
         return _stake(from, amount);
     }
 
-    function withdraw()
-        public
-        //_realAddress(msg.sender)
-        _staked(msg.sender)
-        returns (bool)
-    {
+    function withdraw() public _staked(msg.sender) returns (bool) {
         address from = msg.sender;
         require(
-            block.timestamp >= (deposits[from].depositTime).add(10), //(30 * 24 * 3600),
+            block.timestamp >= (deposits[from].depositTime).add(10), //(lockduration * 24 * 3600),
             "Requesting before lock time"
         );
         require(deposits[from].paid == false, "Already paid out");
 
         uint256 amount = deposits[from].depositAmount;
-        return _withdrawAfterClose(from, amount);
+        uint256 userInterestRate = deposits[from].interestRate;
+        return _withdrawAfterClose(from, amount, userInterestRate);
     }
 
-    function _withdrawAfterClose(address from, uint256 amount)
-        private
-        returns (
-            //_realAddress(from)
-            bool
-        )
-    {
+    function _withdrawAfterClose(
+        address from,
+        uint256 amount,
+        uint256 userInterestRate
+    ) private returns (bool) {
         deposits[from].paid = true;
-        uint256 reward = ((amount * 148) / (100 * 100));
+        uint256 num = amount.mul(userInterestRate);
+        uint256 denom = 10000;
+        uint256 reward = num.div(denom);
+        // uint256 reward = ((amount * rate) / (100 * 100));
+
+        require(reward <= rewardBalance, "Not enough rewards");
 
         bool principalPaid = _payDirect(from, amount, tokenAddress);
         bool rewardPaid = _payDirect(from, reward, rewardTokenAddress);
@@ -337,7 +429,7 @@ contract Liquidity {
 
     function _stake(address staker, uint256 amount)
         private
-        _positive(amount)
+        //_minStake(amount)
         _hasAllowance(staker, amount, tokenAddress)
         returns (bool)
     {
@@ -346,7 +438,13 @@ contract Liquidity {
         }
         //set the staking status to true
         hasStaked[staker] = true;
-        deposits[staker] = Deposits(staker, amount, block.timestamp, false);
+        deposits[staker] = Deposits(
+            staker,
+            amount,
+            block.timestamp,
+            rate,
+            false
+        );
         emit Staked(tokenAddress, staker, amount);
 
         // Transfer is completed
@@ -380,7 +478,7 @@ contract Liquidity {
         address to,
         uint256 amount,
         address token
-    ) private _positive(amount) returns (bool) {
+    ) private returns (bool) {
         ERC20Interface = IERC20(token);
         return ERC20Interface.transfer(to, amount);
     }
@@ -390,8 +488,8 @@ contract Liquidity {
     //     _;
     // }
 
-    modifier _positive(uint256 amount) {
-        require(amount > 0, "Negative amount");
+    modifier _minStake(uint256 amount) {
+        require(amount >= minStakeAmount, "Less than min stake amount");
         _;
     }
 
