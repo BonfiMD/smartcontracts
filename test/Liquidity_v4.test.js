@@ -1,7 +1,7 @@
 const { assert } = require('chai');
 const truffleAssert = require('truffle-assertions');
 
-const Liquidity = artifacts.require('./Liquidity.sol');
+const Liquidity = artifacts.require('./Liquidity_v4.sol');
 const Token = artifacts.require('./Token.sol');
 const TestToken = artifacts.require('./TestToken.sol');
 
@@ -80,7 +80,14 @@ contract('Liquidity', (accounts) => {
         it('should set rate by owner', async() => {
             await instance.setRate(150, {from: accounts[0]});
             const rate = await instance.rate();
+            const index = await instance.index();
             rate.toString().should.equal('150', "Rate set successfully by owner");
+            const newRate = await instance.rates(index);
+            newRate[0].toString().should.equal('150', "Rate is updated");
+        })
+
+        it('should not allow 0 interest rate', async() => {
+            await truffleAssert.reverts(instance.setRate(0, {from: accounts[0]}), "Zero interest rate");
         })
 
         it('should set minStakeAmount by owner', async() => {
@@ -123,7 +130,9 @@ contract('Liquidity', (accounts) => {
             const stake = 2000000000000000000;
             await instance.stake(stake.toString());
             const deposits = await instance.userDeposits();
+            const index = await instance.index();
             deposits[0].toString().should.equal(stake.toString(), "Staked successfully");
+            deposits[2].toString().should.equal(index.toString(), "Index is set correctly");
             deposits[3].should.equal(false, "Staked successfully");
             const stakedBalance = await instance.stakedBalance();
             stakedBalance.toString().should.equal(stake.toString(), "Staked Balance is correct");
@@ -139,15 +148,19 @@ contract('Liquidity', (accounts) => {
         it('should stake according to the changes in rates', async() => {
             const deposits = await instance.userDeposits();
             const rate = await instance.rate();
-            rate.toString().should.equal(deposits[2].toString(), "Rates are synced");
-            await instance.setRate(70);
+            const userIndex = deposits[2].toString();
+            const userRate = await instance.rates(userIndex);
+            rate.toString().should.equal(userRate[0].toString(), "Rates are synced");
+            await instance.setRate(160);
             const stake = 2000000000000000000;
             await token.transfer(accounts[1], stake.toString());
             await token.approve(instance.address, stake.toString(), { from: accounts[1]});
             await instance.stake(stake.toString(), {from: accounts[1]});
             const deposits1 = await instance.userDeposits({from: accounts[1]});
             const rate1 = await instance.rate();
-            rate1.toString().should.equal(deposits1[2].toString(), "Rates are synced");
+            const userIndex1 = deposits1[2].toString();
+            const userRate1 = await instance.rates(userIndex1);
+            rate1.toString().should.equal(userRate1[0].toString(), "Rates are synced");
         })
     })
 
@@ -169,36 +182,45 @@ contract('Liquidity', (accounts) => {
             function timeout(ms) {
                 return new Promise(resolve => setTimeout(resolve, ms));
             }
-            await timeout(10000);
+            await timeout(60000);
             await truffleAssert.reverts(instance.withdraw({from: accounts[2]}), "Not enough rewards");
+            //Test for next case
+            const stake1 = 2000000000000000000;
+            await token.transfer(accounts[3], stake1.toString());
+            await token.approve(instance.address, stake1.toString(), {from: accounts[3]});
+            await instance.stake(stake1.toString(), {from: accounts[3]});
         })
 
         it('withdraws successfully', async() => {
-            const balance = await token.balanceOf(accounts[0]);
-            const rewardTokenBalance = await rewardToken.balanceOf(accounts[0]);
-            const deposits = await instance.userDeposits();
             const stakedBalance = await instance.stakedBalance();
             const rewardBalance = await instance.rewardBalance();
-            // function timeout(ms) {
-            //     return new Promise(resolve => setTimeout(resolve, ms));
-            // }
-            // await timeout(10000);
-            await instance.withdraw();
-            const rate = deposits[2];
-            const latestBalance = await token.balanceOf(accounts[0]);
-            const latestRewardTokenBalance = await rewardToken.balanceOf(accounts[0]);
-            const totalAmount = balance.add(web3.utils.toBN(deposits[0]));
-            latestBalance.toString().should.equal(totalAmount.toString(), "Tokens added successfully");
-            const reward = (deposits[0] * rate)/10000;
-            const totalReward = rewardTokenBalance.add(web3.utils.toBN(reward)); 
-            latestRewardTokenBalance.toString().should.equal(totalReward.toString(), "Rewards added successfully");
+            console.log(stakedBalance.toString(), rewardBalance.toString());
+            const balance = await token.balanceOf(accounts[3]);
+            const userRewardBalance = await rewardToken.balanceOf(accounts[3]);
+            console.log(balance.toString());
+            const amount = await instance.userDeposits({from: accounts[3]});
+            const depositAmount = amount[0];
+            console.log(amount[2]);
+            function timeout(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await timeout(30000);
+            await instance.setRate(170);
+            await timeout(30000);
+            await instance.withdraw({from: accounts[3]});
+            const balance1 = await token.balanceOf(accounts[3]);
+            console.log(balance1.toString());
+            const latestUserRewardBalance = await rewardToken.balanceOf(accounts[3]);
             const latestStakedBalance = await instance.stakedBalance();
-            latestStakedBalance.toString().should.equal((stakedBalance - deposits[0]).toString(), "Staked Balance updated successfully");
+            latestStakedBalance.toString().should.equal(stakedBalance.sub(depositAmount).toString(), "Staked balance updated correctly");
+            const reward = latestUserRewardBalance.sub(web3.utils.toBN(userRewardBalance));
+            console.log(reward.toString());
             const latestRewardBalance = await instance.rewardBalance();
-            latestRewardBalance.toString().should.equal((rewardBalance - reward).toString(), "Reward Balance updated successfully");
+            latestRewardBalance.toString().should.equal(rewardBalance.sub(reward).toString(), "Reward Balance updated correctly");
         })
 
         it('should not withdraw twice', async() => {
+            await instance.withdraw();
             await truffleAssert.reverts(instance.withdraw(), "No stakes found for user");
         })
     })

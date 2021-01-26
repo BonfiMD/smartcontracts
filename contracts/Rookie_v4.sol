@@ -200,21 +200,96 @@ library SafeMath {
 
 pragma solidity ^0.5.0;
 
-contract All {
+/**
+ * @dev Contract module which provides a basic access control mechanism, where
+ * there is an account (an owner) that can be granted exclusive access to
+ * specific functions.
+ *
+ * By default, the owner account will be the one that deploys the contract. This
+ * can later be changed with {transferOwnership}.
+ *
+ * This module is used through inheritance. It will make available the modifier
+ * `onlyOwner`, which can be applied to your functions to restrict their use to
+ * the owner.
+ */
+contract Ownable {
+    address private _owner;
+
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
+    constructor() internal {
+        _owner = msg.sender;
+        emit OwnershipTransferred(address(0), msg.sender);
+    }
+
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(_owner == msg.sender, "Ownable: caller is not the owner");
+        _;
+    }
+
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * `onlyOwner` functions anymore. Can only be called by the current owner.
+     *
+     * NOTE: Renouncing ownership will leave the contract without an owner,
+     * thereby removing any functionality that is only available to the owner.
+     */
+    function renounceOwnership() public onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Can only be called by the current owner.
+     */
+    function transferOwnership(address newOwner) public onlyOwner {
+        require(
+            newOwner != address(0),
+            "Ownable: new owner is the zero address"
+        );
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
+}
+
+pragma solidity ^0.5.8;
+
+contract Rookie_v4 is Ownable {
     using SafeMath for uint256;
 
     struct Deposits {
         address depositor;
         uint256 depositAmount;
         uint256 depositTime;
-        tier depositTier;
+        uint256 userIndex;
         bool paid;
     }
 
-    enum tier {ROOKIE, PROFESSIONAL, LEGENDARY}
+    struct Rates {
+        uint256 newInterestRate;
+        uint256 timeStamp;
+    }
 
-    mapping(address => mapping(uint8 => bool)) private hasStaked;
-    mapping(address => mapping(uint8 => Deposits)) private deposits;
+    mapping(address => bool) private hasStaked;
+    mapping(address => Deposits) private deposits;
+    mapping(uint256 => Rates) public rates;
 
     string public name;
     address public tokenAddress;
@@ -222,6 +297,10 @@ contract All {
     uint256 public totalReward;
     uint256 public rewardBalance;
     uint256 public stakedBalance;
+    uint256 public minStakeAmount;
+    uint256 public rate;
+    uint256 public lockduration;
+    uint256 public index;
 
     IERC20 public ERC20Interface;
     event Staked(
@@ -236,18 +315,44 @@ contract All {
         uint256 reward_
     );
 
-    constructor(string memory name_, address tokenAddress_) public {
+    /**
+     *   @param
+     *   name_, name of the contract
+     *   tokenAddress_, contract address of the token
+     *   rate_, rate multiplied by 100
+     *   lockduration_, duration in days
+     */
+
+    constructor(
+        string memory name_,
+        address tokenAddress_,
+        uint256 rate_,
+        uint256 lockduration_
+    ) public Ownable() {
         name = name_;
         require(tokenAddress_ != address(0), "Token address: 0 address");
         tokenAddress = tokenAddress_;
+        require(rate_ != 0, "Zero interest rate");
+        rate = rate_;
+        lockduration = lockduration_;
+        rates[index] = Rates(rate, block.timestamp);
+    }
+
+    function setMinStakeAmount(uint256 amount_) public onlyOwner {
+        minStakeAmount = amount_;
+    }
+
+    function setRate(uint256 rate_) public onlyOwner {
+        require(rate_ != 0, "Zero interest rate");
+        index++;
+        rates[index] = Rates(rate_, block.timestamp);
+        rate = rate_;
     }
 
     function addReward(uint256 rewardAmount)
         public
-        returns (
-            //_hasAllowance(msg.sender, rewardAmount)
-            bool
-        )
+        _hasAllowance(msg.sender, rewardAmount)
+        returns (bool)
     {
         require(rewardAmount > 0, "Reward must be positive");
         address from = msg.sender;
@@ -260,23 +365,23 @@ contract All {
         return true;
     }
 
-    function userDeposits(uint8 _tier)
+    function userDeposits()
         public
         view
-        _staked(msg.sender, _tier)
+        _staked(msg.sender)
         returns (
             uint256,
             uint256,
-            tier,
+            uint256,
             bool
         )
     {
         address user = msg.sender;
         return (
-            deposits[user][_tier].depositAmount,
-            deposits[user][_tier].depositTime,
-            deposits[user][_tier].depositTier,
-            deposits[user][_tier].paid
+            deposits[user].depositAmount,
+            deposits[user].depositTime,
+            deposits[user].userIndex,
+            deposits[user].paid
         );
     }
 
@@ -284,92 +389,90 @@ contract All {
      * Requirements:
      * - `amount` Amount to be staked
      */
-    function stake(uint256 amount, tier _tier)
-        public
-        _positive(amount)
-        returns (
-            //_realAddress(msg.sender)
-            bool
-        )
-    {
-        uint8 test = uint8(_tier);
+    function stake(uint256 amount) public _minStake(amount) returns (bool) {
         address from = msg.sender;
-        if (_tier == tier.ROOKIE) {
-            require(hasStaked[from][test] == false, "Already staked");
-            return _stake(from, amount, test);
-        } else if (_tier == tier.PROFESSIONAL) {
-            require(hasStaked[from][test] == false, "Already staked");
-            return _stake(from, amount, test);
-        } else if (_tier == tier.LEGENDARY) {
-            require(hasStaked[from][test] == false, "Already staked");
-            return _stake(from, amount, test);
-        }
-        // require(hasStaked[from] == false, "Already staked");
-        // return _stake(from, amount, _tier);
+        require(hasStaked[from] == false, "Already staked");
+        return _stake(from, amount);
     }
 
-    function withdraw(tier _tier)
-        public
-        //_realAddress(msg.sender)
-        _staked(msg.sender, uint8(_tier))
-        returns (bool)
-    {
-        uint8 test = uint8(_tier);
+    function withdraw() public _staked(msg.sender) returns (bool) {
         address from = msg.sender;
-        // require(
-        //     block.timestamp >= (deposits[from].depositTime).add(60), //(30 * 24 * 3600),
-        //     "Requesting before lock time"
-        // );
-        require(deposits[from][test].paid == false, "Already paid out");
-        uint256 amount = deposits[from][test].depositAmount;
+        require(
+            block.timestamp >= (deposits[from].depositTime).add(60), //(lockduration * 24 * 3600),
+            "Requesting before lock time"
+        );
+        require(deposits[from].paid == false, "Already paid out");
 
-        if (_tier == tier.ROOKIE) {
-            require(
-                block.timestamp >= (deposits[from][test].depositTime).add(60), //(30 * 24 * 3600),
-                "Requesting before lock time"
-            );
-            return _withdrawAfterClose(from, amount, test, 58);
-        } else if (_tier == tier.PROFESSIONAL) {
-            require(
-                block.timestamp >= (deposits[from][test].depositTime).add(60), //(90 * 24 * 3600),
-                "Requesting before lock time"
-            );
-            return _withdrawAfterClose(from, amount, test, 271);
-        } else if (_tier == tier.LEGENDARY) {
-            require(
-                block.timestamp >= (deposits[from][test].depositTime).add(60), //(180 * 24 * 3600),
-                "Requesting before lock time"
-            );
-            return _withdrawAfterClose(from, amount, test, 690);
-        }
-        //return _withdrawAfterClose(from, amount);
+        uint256 amount = deposits[from].depositAmount;
+        uint256 _userIndex = deposits[from].userIndex;
+        return _withdrawAfterClose(from, amount, _userIndex);
     }
 
     function _withdrawAfterClose(
         address from,
         uint256 amount,
-        uint8 _tier,
-        uint256 rate
-    )
-        private
-        returns (
-            //_realAddress(from)
-            bool
-        )
-    {
-        deposits[from][_tier].paid = true;
+        uint256 _userIndex
+    ) private returns (bool) {
+        deposits[from].paid = true;
+        uint256 i;
+        uint256 initialRate = rates[_userIndex].newInterestRate;
+        uint256 initialTime = deposits[from].depositTime;
+        uint256 endTime = initialTime.add(60); //(lockDuration * 24 * 3600);
+        uint256 time;
 
-        //uint256 noOfDecimals = 1000000000000000000;
-        uint256 num = amount.mul(rate);
-        uint256 denom = 10000;
-        uint256 reward = num.div(denom);
+        for (i = _userIndex; i <= index; i++) {
+            if (initialTime >= endTime) {
+                break;
+            } else {
+                if (initialTime <= rates[i].timeStamp) {
+                    if (endTime <= rates[i].timeStamp) {
+                        time = rates[i].timeStamp.sub(endTime);
+                    } else {
+                        time = rates[i].timeStamp.sub(initialTime);
+                        uint256 period = 60; //(lockduration * 24 * 3600);
+                        uint256 initialAmount = deposits[from].depositAmount;
+                        uint256 interest;
+                        {
+                            uint256 num =
+                                time.mul(initialAmount.mul(initialRate));
+                            uint256 denom = period.mul(10000);
+                            interest = num.div(denom);
+                        }
+                        deposits[from].depositAmount = initialAmount.add(
+                            interest
+                        );
+                        deposits[from].depositTime = rates[i].timeStamp;
+                        //deposits[from].interestRate = rates[i].newInterestRate;
+                        deposits[from].userIndex = i;
+                        initialRate = rates[i].newInterestRate;
+                        initialTime = rates[i].timeStamp;
+                    }
+                }
+            }
+        }
 
-        //uint256 reward = ((amount * 58) / (100 * 100 * (1000000000000000000)));
+        uint256 interestRate = rates[deposits[from].userIndex].newInterestRate;
+
+        if (deposits[from].depositTime < endTime) {
+            uint256 time1 = endTime.sub(deposits[from].depositTime);
+            uint256 finalInterest;
+
+            {
+                uint256 num = time1.mul(deposits[from].depositAmount);
+                uint256 denom = 600000; //Replace with (lockduration * 24 * 3600 * 10000)
+                finalInterest = num.div(denom).mul(interestRate);
+            }
+            deposits[from].depositAmount += finalInterest;
+        }
+
+        uint256 reward = deposits[from].depositAmount.sub(amount);
+
+        require(reward <= rewardBalance, "Not enough rewards");
 
         uint256 payOut = amount.add(reward);
         stakedBalance = stakedBalance.sub(amount);
         rewardBalance = rewardBalance.sub(reward);
-        hasStaked[from][_tier] = false;
+        hasStaked[from] = false;
         if (_payDirect(from, payOut)) {
             emit PaidOut(tokenAddress, from, amount, reward);
             return true;
@@ -377,28 +480,22 @@ contract All {
         return false;
     }
 
-    function _stake(
-        address staker,
-        uint256 amount,
-        uint8 tier_
-    )
+    function _stake(address staker, uint256 amount)
         private
-        _positive(amount)
-        returns (
-            //_hasAllowance(staker, amount)
-            bool
-        )
+        // _minStake(amount)
+        _hasAllowance(staker, amount)
+        returns (bool)
     {
         if (!_payMe(staker, amount)) {
             return false;
         }
         //set the staking status to true
-        hasStaked[staker][tier_] = true;
-        deposits[staker][tier_] = Deposits(
+        hasStaked[staker] = true;
+        deposits[staker] = Deposits(
             staker,
             amount,
             block.timestamp,
-            tier(tier_),
+            index,
             false
         );
         emit Staked(tokenAddress, staker, amount);
@@ -417,13 +514,7 @@ contract All {
         address allower,
         address receiver,
         uint256 amount
-    )
-        private
-        returns (
-            //_hasAllowance(allower, amount)
-            bool
-        )
-    {
+    ) private _hasAllowance(allower, amount) returns (bool) {
         // Request to transfer amount from the contract to receiver.
         // contract does not own the funds, so the allower must have added allowance to the contract
         // Allower is the original owner.
@@ -431,11 +522,7 @@ contract All {
         return ERC20Interface.transferFrom(allower, receiver, amount);
     }
 
-    function _payDirect(address to, uint256 amount)
-        private
-        _positive(amount)
-        returns (bool)
-    {
+    function _payDirect(address to, uint256 amount) private returns (bool) {
         ERC20Interface = IERC20(tokenAddress);
         return ERC20Interface.transfer(to, amount);
     }
@@ -445,22 +532,22 @@ contract All {
     //     _;
     // }
 
-    modifier _positive(uint256 amount) {
-        require(amount >= 0, "Negative amount");
+    modifier _minStake(uint256 amount) {
+        require(amount >= minStakeAmount, "Less than min stake amount");
         _;
     }
 
-    // modifier _hasAllowance(address allower, uint256 amount) {
-    //     // Make sure the allower has provided the right allowance.
-    //     ERC20Interface = IERC20(tokenAddress);
-    //     uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
-    //     require(amount <= ourAllowance, "Make sure to add enough allowance");
-    //     _;
-    // }
+    modifier _hasAllowance(address allower, uint256 amount) {
+        // Make sure the allower has provided the right allowance.
+        ERC20Interface = IERC20(tokenAddress);
+        uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
+        require(amount <= ourAllowance, "Make sure to add enough allowance");
+        _;
+    }
 
-    modifier _staked(address from, uint8 _tier) {
+    modifier _staked(address from) {
         //to check the user status
-        require(hasStaked[from][_tier] == true, "No stakes found for user");
+        require(hasStaked[from] == true, "No stakes found for user");
         _;
     }
 }

@@ -269,9 +269,9 @@ contract Ownable {
     }
 }
 
-pragma solidity ^0.5.8;
+pragma solidity ^0.5.0;
 
-contract RookieFinal is Ownable {
+contract Liquidity_v3 is Ownable {
     using SafeMath for uint256;
 
     struct Deposits {
@@ -282,11 +282,18 @@ contract RookieFinal is Ownable {
         bool paid;
     }
 
+    struct Rates {
+        uint256 newInterestRate;
+        uint256 timeStamp;
+    }
+
     mapping(address => bool) private hasStaked;
     mapping(address => Deposits) private deposits;
+    mapping(uint256 => Rates) public rates;
 
     string public name;
     address public tokenAddress;
+    address public rewardTokenAddress;
     uint256 public stakedTotal;
     uint256 public totalReward;
     uint256 public rewardBalance;
@@ -294,15 +301,17 @@ contract RookieFinal is Ownable {
     uint256 public minStakeAmount;
     uint256 public rate;
     uint256 public lockduration;
+    uint256 public index;
 
     IERC20 public ERC20Interface;
     event Staked(
         address indexed token,
         address indexed staker_,
-        uint256 StakedAmount_
+        uint256 stakedAmount_
     );
     event PaidOut(
         address indexed token,
+        address indexed rewardToken,
         address indexed staker_,
         uint256 amount_,
         uint256 reward_
@@ -312,6 +321,7 @@ contract RookieFinal is Ownable {
      *   @param
      *   name_, name of the contract
      *   tokenAddress_, contract address of the token
+     *   rewardTokenAddress_, contract address of the reward token
      *   rate_, rate multiplied by 100
      *   lockduration_, duration in days
      */
@@ -319,12 +329,15 @@ contract RookieFinal is Ownable {
     constructor(
         string memory name_,
         address tokenAddress_,
+        address rewardTokenAddress_,
         uint256 rate_,
         uint256 lockduration_
     ) public Ownable() {
         name = name_;
         require(tokenAddress_ != address(0), "Token address: 0 address");
         tokenAddress = tokenAddress_;
+        require(rewardTokenAddress_ != address(0), "Token address: 0 address");
+        rewardTokenAddress = rewardTokenAddress_;
         require(rate_ != 0, "Zero interest rate");
         rate = rate_;
         lockduration = lockduration_;
@@ -336,17 +349,19 @@ contract RookieFinal is Ownable {
 
     function setRate(uint256 rate_) public onlyOwner {
         require(rate_ != 0, "Zero interest rate");
+        index++;
+        rates[index] = Rates(rate_, block.timestamp);
         rate = rate_;
     }
 
     function addReward(uint256 rewardAmount)
         public
-        _hasAllowance(msg.sender, rewardAmount)
+        _hasAllowance(msg.sender, rewardAmount, rewardTokenAddress)
         returns (bool)
     {
         require(rewardAmount > 0, "Reward must be positive");
         address from = msg.sender;
-        if (!_payMe(from, rewardAmount)) {
+        if (!_payMe(from, rewardAmount, rewardTokenAddress)) {
             return false;
         }
         //Rewards added to staking contract
@@ -388,7 +403,7 @@ contract RookieFinal is Ownable {
     function withdraw() public _staked(msg.sender) returns (bool) {
         address from = msg.sender;
         require(
-            block.timestamp >= (deposits[from].depositTime).add(10), //(lockduration * 24 * 3600),
+            block.timestamp >= (deposits[from].depositTime).add(60), //(lockduration * 24 * 3600),
             "Requesting before lock time"
         );
         require(deposits[from].paid == false, "Already paid out");
@@ -404,31 +419,81 @@ contract RookieFinal is Ownable {
         uint256 userInterestRate
     ) private returns (bool) {
         deposits[from].paid = true;
-        uint256 num = amount.mul(userInterestRate); // Make rate dynamic
-        uint256 denom = 10000;
-        uint256 reward = num.div(denom);
-        // uint256 reward = ((amount * rate) / (100 * 100));
+        // uint256 num = amount.mul(userInterestRate);
+        // uint256 denom = 10000;
+        // uint256 reward = num.div(denom);
+
+        uint256 i;
+        uint256 initialRate = userInterestRate;
+        uint256 initialTime = deposits[from].depositTime;
+        uint256 endTime = initialTime.add(60); //(lockDuration * 24 * 3600);
+        uint256 time;
+
+        for (i = 1; i <= index; i++) {
+            if (initialTime >= endTime) {
+                break;
+            } else {
+                if (initialTime <= rates[i].timeStamp) {
+                    if (endTime <= rates[i].timeStamp) {
+                        time = rates[i].timeStamp.sub(endTime);
+                    } else {
+                        time = rates[i].timeStamp.sub(initialTime);
+                        uint256 period = 60; //(lockduration * 24 * 3600);
+                        uint256 initialAmount = deposits[from].depositAmount;
+                        uint256 interest;
+                        {
+                            uint256 num =
+                                time.mul(initialAmount.mul(initialRate));
+                            uint256 denom = period.mul(10000);
+                            uint256 interest1 = num.div(denom);
+                            interest = interest1;
+                        }
+                        deposits[from].depositAmount = initialAmount.add(
+                            interest
+                        );
+                        deposits[from].depositTime = rates[i].timeStamp;
+                        deposits[from].interestRate = rates[i].newInterestRate;
+                        initialRate = rates[i].newInterestRate;
+                        initialTime = rates[i].timeStamp;
+                    }
+                }
+            }
+        }
+
+        if (deposits[from].depositTime < endTime) {
+            uint256 time1 = endTime.sub(deposits[from].depositTime);
+            uint256 num =
+                time1.mul(
+                    deposits[from].depositAmount.mul(
+                        deposits[from].interestRate
+                    )
+                );
+            uint256 denom = 600000;
+            uint256 interest = num.div(denom);
+            deposits[from].depositAmount += interest;
+        }
+
+        uint256 reward = deposits[from].depositAmount.sub(amount);
 
         require(reward <= rewardBalance, "Not enough rewards");
 
-        uint256 payOut = amount.add(reward);
+        bool principalPaid = _payDirect(from, amount, tokenAddress);
+        bool rewardPaid = _payDirect(from, reward, rewardTokenAddress);
+        require(principalPaid && rewardPaid, "Error paying");
+        emit PaidOut(tokenAddress, rewardTokenAddress, from, amount, reward);
         stakedBalance = stakedBalance.sub(amount);
         rewardBalance = rewardBalance.sub(reward);
         hasStaked[from] = false;
-        if (_payDirect(from, payOut)) {
-            emit PaidOut(tokenAddress, from, amount, reward);
-            return true;
-        }
-        return false;
+        return true;
     }
 
     function _stake(address staker, uint256 amount)
         private
-        // _minStake(amount)
-        _hasAllowance(staker, amount)
+        //_minStake(amount)
+        _hasAllowance(staker, amount, tokenAddress)
         returns (bool)
     {
-        if (!_payMe(staker, amount)) {
+        if (!_payMe(staker, amount, tokenAddress)) {
             return false;
         }
         //set the staking status to true
@@ -448,24 +513,33 @@ contract RookieFinal is Ownable {
         return true;
     }
 
-    function _payMe(address payer, uint256 amount) private returns (bool) {
-        return _payTo(payer, address(this), amount);
+    function _payMe(
+        address payer,
+        uint256 amount,
+        address token
+    ) private returns (bool) {
+        return _payTo(payer, address(this), amount, token);
     }
 
     function _payTo(
         address allower,
         address receiver,
-        uint256 amount
-    ) private _hasAllowance(allower, amount) returns (bool) {
+        uint256 amount,
+        address token
+    ) private _hasAllowance(allower, amount, token) returns (bool) {
         // Request to transfer amount from the contract to receiver.
         // contract does not own the funds, so the allower must have added allowance to the contract
         // Allower is the original owner.
-        ERC20Interface = IERC20(tokenAddress);
+        ERC20Interface = IERC20(token);
         return ERC20Interface.transferFrom(allower, receiver, amount);
     }
 
-    function _payDirect(address to, uint256 amount) private returns (bool) {
-        ERC20Interface = IERC20(tokenAddress);
+    function _payDirect(
+        address to,
+        uint256 amount,
+        address token
+    ) private returns (bool) {
+        ERC20Interface = IERC20(token);
         return ERC20Interface.transfer(to, amount);
     }
 
@@ -479,9 +553,13 @@ contract RookieFinal is Ownable {
         _;
     }
 
-    modifier _hasAllowance(address allower, uint256 amount) {
+    modifier _hasAllowance(
+        address allower,
+        uint256 amount,
+        address token
+    ) {
         // Make sure the allower has provided the right allowance.
-        ERC20Interface = IERC20(tokenAddress);
+        ERC20Interface = IERC20(token);
         uint256 ourAllowance = ERC20Interface.allowance(allower, address(this));
         require(amount <= ourAllowance, "Make sure to add enough allowance");
         _;
