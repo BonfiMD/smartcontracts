@@ -539,7 +539,9 @@ contract Rookie_v5 is Ownable {
         uint256 endTime = depositTime.add(60); //replace with (lockduration * 24 * 3600)
         uint256 time;
         for (uint256 i = userIndex; i < index; i++) {
+            //loop runs till the latest index/interest rate change
             if (endTime < rates[i + 1].timeStamp) {
+                //if the change occurs after the endTime loop breaks
                 break;
             } else {
                 time = rates[i + 1].timeStamp.sub(depositTime);
@@ -553,6 +555,7 @@ contract Rookie_v5 is Ownable {
         }
 
         if (depositTime < endTime) {
+            //final calculation for the remaining time period
             time = endTime.sub(depositTime);
             uint256 finalInterest;
 
