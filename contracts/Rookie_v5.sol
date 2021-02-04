@@ -510,12 +510,12 @@ contract Rookie_v5 is Ownable {
         uint256 payOut = amount.add(reward);
         stakedBalance = stakedBalance.sub(amount);
         rewardBalance = rewardBalance.sub(reward);
-        deposits[from].paid = true;
         hasStaked[from] = false;
         if (_payDirect(from, payOut)) {
             emit PaidOut(tokenAddress, from, amount, reward);
             return true;
         }
+        deposits[from].paid = true;
         return false;
     }
 
