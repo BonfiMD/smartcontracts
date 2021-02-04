@@ -498,7 +498,7 @@ contract Liquidity_v5 is Ownable {
         uint256 userIndex,
         uint256 depositTime
     ) private returns (bool) {
-        deposits[from].paid = true;
+        
         uint256 totalAmount = calculate(amount, userIndex, depositTime);
 
         uint256 reward = totalAmount.sub(amount);
@@ -508,6 +508,7 @@ contract Liquidity_v5 is Ownable {
         bool principalPaid = _payDirect(from, amount, tokenAddress);
         bool rewardPaid = _payDirect(from, reward, rewardTokenAddress);
         require(principalPaid && rewardPaid, "Error paying");
+        deposits[from].paid = true;
         emit PaidOut(tokenAddress, rewardTokenAddress, from, amount, reward);
         stakedBalance = stakedBalance.sub(amount);
         rewardBalance = rewardBalance.sub(reward);
