@@ -1,4 +1,4 @@
-const Liquidity = artifacts.require("Liquidity_v4");
+const Liquidity = artifacts.require("Liquidity_v5");
 const Token = artifacts.require("Token");
 const TestToken = artifacts.require("TestToken");
 

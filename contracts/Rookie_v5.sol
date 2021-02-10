@@ -500,7 +500,6 @@ contract Rookie_v5 is Ownable {
         uint256 userIndex,
         uint256 depositTime
     ) private returns (bool) {
-        
         uint256 totalAmount = calculate(amount, userIndex, depositTime);
 
         uint256 reward = totalAmount.sub(amount);

@@ -1,21 +1,20 @@
 const { assert } = require('chai');
 const truffleAssert = require('truffle-assertions');
 
-const Liquidity = artifacts.require('./Liquidity_v4.sol');
+const Rookie = artifacts.require('./Rookie_v5.sol');
 const Token = artifacts.require('./Token.sol');
-const TestToken = artifacts.require('./TestToken.sol');
 
 require('chai')
     .use(require('chai-as-promised'))
-    .should();
+    .should();  
 
-contract('Liquidity', (accounts) => {
-    let instance, token, rewardToken;
+contract('Rookie', (accounts) => {
+    let instance;
+    let token;
     const totalSupply = 200000000000000000000;
     before(async() => {
         token = await Token.new("MineToken", "MNT", 18, totalSupply.toString(), accounts[0]);
-        rewardToken = await TestToken.new("RewardToken", "RWT", 18, totalSupply.toString(), accounts[0]);
-        instance = await Liquidity.new("Liquidity", token.address, rewardToken.address, 148, 30);
+        instance = await Rookie.new("Rookie", token.address, 58, 30);
         });
 
     describe('deployment', async() => {
@@ -29,22 +28,17 @@ contract('Liquidity', (accounts) => {
 
         it('has a name', async() => {
             const name = await instance.name();
-            name.should.equal('Liquidity');
+            name.should.equal("Rookie");
         })
 
-        it('has token address', async() => {
+        it('has tokenAddress', async() => {
             const tokenAddress = await instance.tokenAddress();
-            tokenAddress.should.equal(token.address);
-        })
-
-        it('has reward token address', async() => {
-            const rewardTokenAddress = await instance.rewardTokenAddress();
-            rewardTokenAddress.should.equal(rewardToken.address);
+            assert.equal(tokenAddress.toString(), token.address);
         })
 
         it('has rate', async() => {
             const rate = await instance.rate();
-            assert.equal(rate, 148);
+            assert.equal(rate, 58);
         })
 
         it('has lock duration', async() => {
@@ -54,6 +48,7 @@ contract('Liquidity', (accounts) => {
     })
 
     describe('Rewards', async() => {
+
         it('should not add 0 rewards', async() => {
             await truffleAssert.reverts(instance.addReward(0), "Reward must be positive")
         })
@@ -61,29 +56,30 @@ contract('Liquidity', (accounts) => {
         it('should not add reward greater than allowance', async() => {
             const approval = 1000000000000000000;
             const rewards = 2000000000000000000;
-            await rewardToken.approve(instance.address, approval.toString());
+            await token.approve(instance.address, approval.toString());
             await truffleAssert.reverts(instance.addReward(rewards.toString()),"Make sure to add enough allowance");
         })
-
+        
         it('adds rewards', async() => {
-            const rewards = 500000000000000000;
-            await rewardToken.approve(instance.address, rewards.toString());
-            await instance.addReward(rewards.toString());
+            const reward = 500000000000000000;
+            await token.approve(instance.address, reward.toString());
+            await instance.addReward(reward.toString());
             const totalReward = await instance.totalReward();
-            totalReward.toString().should.equal(rewards.toString(), "Total rewards are correct");
+            totalReward.toString().should.equal(reward.toString(), "Total rewards is correct");
             const rewardBalance = await instance.rewardBalance();
-            rewardBalance.toString().should.equal(rewards.toString(), "Rewards balance is correct");
+            rewardBalance.toString().should.equal(reward.toString(), "Reward balance is correct");
         })
     })
 
     describe('Setting rate and minStakeAmount', async() => {
+
         it('should set rate by owner', async() => {
-            await instance.setRate(150, {from: accounts[0]});
+            await instance.setRate(60, {from: accounts[0]});
             const rate = await instance.rate();
-            const index = await instance.index();
-            rate.toString().should.equal('150', "Rate set successfully by owner");
+            const index = await instance.index(); //Check the visibility after testing
+            rate.toString().should.equal('60', "Rate set successfully by owner");
             const newRate = await instance.rates(index);
-            newRate[0].toString().should.equal('150', "Rate is updated");
+            newRate[0].toString().should.equal('60', "Rate is updated");
         })
 
         it('should not allow 0 interest rate', async() => {
@@ -98,7 +94,7 @@ contract('Liquidity', (accounts) => {
         })
 
         it('should not allow others to set rate', async() => {
-            await truffleAssert.reverts(instance.setRate(160, {from: accounts[1]}), "Ownable: caller is not the owner");
+            await truffleAssert.reverts(instance.setRate(66, {from: accounts[1]}), "Ownable: caller is not the owner");
         })
 
         it('should not allow others to set minStakeAmount', async() => {
@@ -121,23 +117,24 @@ contract('Liquidity', (accounts) => {
 
         it('should not add greater than allowance', async() => {
             const approval = 4000000000000000000;
-            const stake = 5000000000000000000;
+            const stake = 50000000000000000000;
             await token.approve(instance.address, approval.toString());
             await truffleAssert.reverts(instance.stake(stake.toString()), "Make sure to add enough allowance");
         })
 
         it('adds stakes', async() => {
             const stake = 2000000000000000000;
-            await instance.stake(stake.toString());
+            await token.approve(instance.address, stake.toString());
+            await instance.stake(stake.toString(), {from: accounts[0]});
             const deposits = await instance.userDeposits();
             const index = await instance.index();
-            deposits[0].toString().should.equal(stake.toString(), "Staked successfully");
+            deposits[0].toString().should.equal('2000000000000000000', "Staked correctly");
             deposits[2].toString().should.equal(index.toString(), "Index is set correctly");
-            deposits[3].should.equal(false, "Staked successfully");
+            deposits[3].should.equal(false, "Staked correctly");
             const stakedBalance = await instance.stakedBalance();
-            stakedBalance.toString().should.equal(stake.toString(), "Staked Balance is correct");
+            stakedBalance.toString().should.equal('2000000000000000000', "Staked Balance is correct");
             const stakedTotal = await instance.stakedTotal();
-            stakedTotal.toString().should.equal(stake.toString(), "Staked total is correct");
+            stakedTotal.toString().should.equal('2000000000000000000', "Staked total is correct");
         })
 
         it('should not allow multiple stakes from same user', async() => {
@@ -150,8 +147,8 @@ contract('Liquidity', (accounts) => {
             const rate = await instance.rate();
             const userIndex = deposits[2].toString();
             const userRate = await instance.rates(userIndex);
-            rate.toString().should.equal(userRate[0].toString(), "Rates are synced");
-            await instance.setRate(160);
+            rate.toString().should.equal(userRate[0].toString(), "Rates are synced1");
+            await instance.setRate(70);
             const stake = 2000000000000000000;
             await token.transfer(accounts[1], stake.toString());
             await token.approve(instance.address, stake.toString(), { from: accounts[1]});
@@ -160,7 +157,7 @@ contract('Liquidity', (accounts) => {
             const rate1 = await instance.rate();
             const userIndex1 = deposits1[2].toString();
             const userRate1 = await instance.rates(userIndex1);
-            rate1.toString().should.equal(userRate1[0].toString(), "Rates are synced");
+            rate1.toString().should.equal(userRate1[0].toString(), "Rates are synced2");
         })
     })
 
@@ -192,11 +189,11 @@ contract('Liquidity', (accounts) => {
         })
 
         it('withdraws successfully', async() => {
+        
             const stakedBalance = await instance.stakedBalance();
             const rewardBalance = await instance.rewardBalance();
             console.log(stakedBalance.toString(), rewardBalance.toString());
             const balance = await token.balanceOf(accounts[3]);
-            const userRewardBalance = await rewardToken.balanceOf(accounts[3]);
             console.log(balance.toString());
             const amount = await instance.userDeposits({from: accounts[3]});
             const depositAmount = amount[0];
@@ -205,24 +202,22 @@ contract('Liquidity', (accounts) => {
                 return new Promise(resolve => setTimeout(resolve, ms));
             }
             await timeout(30000);
-            await instance.setRate(170);
+            await instance.setRate(80);
             await timeout(30000);
             await instance.withdraw({from: accounts[3]});
             const balance1 = await token.balanceOf(accounts[3]);
             console.log(balance1.toString());
-            const latestUserRewardBalance = await rewardToken.balanceOf(accounts[3]);
             const latestStakedBalance = await instance.stakedBalance();
             latestStakedBalance.toString().should.equal(stakedBalance.sub(depositAmount).toString(), "Staked balance updated correctly");
-            const reward = latestUserRewardBalance.sub(web3.utils.toBN(userRewardBalance));
+            const reward = balance1.sub(web3.utils.toBN(depositAmount));
             console.log(reward.toString());
             const latestRewardBalance = await instance.rewardBalance();
             latestRewardBalance.toString().should.equal(rewardBalance.sub(reward).toString(), "Reward Balance updated correctly");
         })
-
+        
         it('should not withdraw twice', async() => {
             await instance.withdraw();
             await truffleAssert.reverts(instance.withdraw(), "No stakes found for user");
         })
     })
 })
-
