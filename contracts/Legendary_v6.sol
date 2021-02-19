@@ -470,7 +470,6 @@ contract Legendary_v6 is Ownable {
     function userDeposits(address user)
         public
         view
-        _staked(user)
         returns (
             uint256,
             uint256,
@@ -478,12 +477,14 @@ contract Legendary_v6 is Ownable {
             bool
         )
     {
-        return (
-            deposits[user].depositAmount,
-            deposits[user].depositTime,
-            deposits[user].userIndex,
-            deposits[user].paid
-        );
+        if (hasStaked[user]) {
+            return (
+                deposits[user].depositAmount,
+                deposits[user].depositTime,
+                deposits[user].userIndex,
+                deposits[user].paid
+            );
+        }
     }
 
     /**
