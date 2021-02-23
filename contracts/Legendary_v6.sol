@@ -314,19 +314,19 @@ contract Ownable is Context {
 }
 
 interface IRookieProfessionalCheck {
-    function userDeposits(address user)
-        external
-        view
-        returns (
-            uint256,
-            uint256,
-            uint256,
-            bool
-        );
+    // function userDeposits(address user)
+    //     external
+    //     view
+    //     returns (
+    //         uint256,
+    //         uint256,
+    //         uint256,
+    //         bool
+    //     );
 
     function eligibility(address user) external view returns (bool);
 
-    function viewEligibilityAmount() external view returns (uint256);
+    // function viewEligibilityAmount() external view returns (uint256);
 
     // function changeEligibility(address user) external returns (bool);
 }
