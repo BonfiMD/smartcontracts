@@ -340,7 +340,7 @@ contract Legendary_v6 is Ownable {
      *  @dev Structs to store user staking data.
      */
     struct Deposits {
-        address depositor;
+        // address depositor;
         uint256 depositAmount;
         uint256 depositTime;
         uint256 userIndex;
@@ -537,7 +537,7 @@ contract Legendary_v6 is Ownable {
         uint256 userIndex,
         uint256 depositTime
     ) private returns (bool) {
-        uint256 totalAmount = calculate(amount, userIndex, depositTime);
+        uint256 totalAmount = _calculate(amount, userIndex, depositTime);
 
         uint256 reward = totalAmount.sub(amount);
 
@@ -603,7 +603,7 @@ contract Legendary_v6 is Ownable {
             } else {
                 time = rates[i + 1].timeStamp.sub(depositTime);
                 uint256 num = amount.mul(rates[i].newInterestRate).mul(time);
-                uint256 denom = 600000;
+                uint256 denom = 600000; //Replace with (lockduration * 24 * 3600 * 10000)
                 uint256 interest = num.div(denom);
                 amount += interest;
                 depositTime = rates[i + 1].timeStamp;
@@ -629,6 +629,46 @@ contract Legendary_v6 is Ownable {
         return (amount);
     }
 
+    //Gas optimasation
+    // function _calculate(
+    //     uint256 amount,
+    //     uint256 userIndex,
+    //     uint256 depositTime
+    // ) private view returns (uint256) {
+    //     uint256 endTime = depositTime.add(60); //replace with (lockduration * 24 * 3600)
+    //     uint256 time;
+    //     uint256 interest;
+    //     for (uint256 i = userIndex; i < index; i++) {
+    //         //loop runs till the latest index/interest rate change
+    //         if (endTime < rates[i + 1].timeStamp) {
+    //             //if the change occurs after the endTime loop breaks
+    //             break;
+    //         } else {
+    //             time = rates[i + 1].timeStamp.sub(depositTime);
+    //             interest = amount.mul(rates[i].newInterestRate).mul(time).div(
+    //                 600000
+    //             ); //replace with (lockduration * 24 * 3600 * 10000)
+    //             amount += interest;
+    //             depositTime = rates[i + 1].timeStamp;
+    //             userIndex++;
+    //         }
+    //     }
+
+    //     if (depositTime < endTime) {
+    //         //final calculation for the remaining time period
+    //         time = endTime.sub(depositTime);
+
+    //         interest = time
+    //             .mul(amount)
+    //             .mul(rates[userIndex].newInterestRate)
+    //             .div(600000); //replace with (lockduration * 24 * 3600 * 10000)
+
+    //         amount += interest;
+    //     }
+
+    //     return (amount);
+    // }
+
     function _stake(address staker, uint256 amount)
         private
         // _minStake(amount)
@@ -641,7 +681,7 @@ contract Legendary_v6 is Ownable {
         //set the staking status to true
         hasStaked[staker] = true;
         deposits[staker] = Deposits(
-            staker,
+            // staker,
             amount,
             block.timestamp,
             index,
