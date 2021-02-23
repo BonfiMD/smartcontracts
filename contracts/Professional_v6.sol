@@ -436,9 +436,9 @@ contract Professional_v6 is Ownable {
     /**
      *  @dev to return the eligibility amount. Used by the Legendary contract
      */
-    function viewEligibilityAmount() public view returns (uint256) {
-        return eligibilityAmount;
-    }
+    // function viewEligibilityAmount() public view returns (uint256) {
+    //     return eligibilityAmount;
+    // }
 
     /**
      *  Requirements:
