@@ -1,7 +1,7 @@
 const { assert } = require('chai');
 const truffleAssert = require('truffle-assertions');
 
-const Rookie = artifacts.require('./Rookie_v6.sol');
+const Rookie = artifacts.require('./Rookie_v7.sol');
 const Token = artifacts.require('./Token.sol');
 
 require('chai')
@@ -71,7 +71,7 @@ contract('Rookie', (accounts) => {
         })
     })
 
-    describe('Setting rate and eligibilityAmount', async() => {
+    describe('Setting rate, lockDuration and eligibilityAmount', async() => {
 
         it('should set rate by owner', async() => {
             await instance.setRate(60, {from: accounts[0]});
@@ -101,6 +101,16 @@ contract('Rookie', (accounts) => {
         //     const minAmount = 1000000000000000000;
         //     await truffleAssert.reverts(instance.setMinStakeAmount(minAmount.toString(), {from: accounts[2]}), "Ownable: caller is not the owner");
         // })
+
+        it('should change lockDuration by owner', async() => {
+            await instance.changeLockDuration(60);
+            const newLockDuration = await instance.lockduration();
+            newLockDuration.toString().should.equal("60", "Lock Duration changed successfully");
+        })
+
+        it('should not allow others to change the lockDuration', async() => {
+            await truffleAssert.reverts(instance.changeLockDuration(60, {from: accounts[2]}), "Ownable: caller is not the owner");
+        })
 
         it('should set eligibility amount by owner', async() => {
             const eligibilityAmount = 5000000000000000000;
@@ -141,8 +151,8 @@ contract('Rookie', (accounts) => {
             const deposits = await instance.userDeposits(accounts[0]);
             const index = await instance.index();
             deposits[0].toString().should.equal('2000000000000000000', "Staked correctly");
-            deposits[2].toString().should.equal(index.toString(), "Index is set correctly");
-            deposits[3].should.equal(false, "Staked correctly");
+            deposits[3].toString().should.equal(index.toString(), "Index is set correctly");
+            deposits[4].should.equal(false, "Staked correctly");
             const stakedBalance = await instance.stakedBalance();
             stakedBalance.toString().should.equal('2000000000000000000', "Staked Balance is correct");
             const stakedTotal = await instance.stakedTotal();
@@ -157,7 +167,7 @@ contract('Rookie', (accounts) => {
         it('should stake according to the changes in rates', async() => {
             const deposits = await instance.userDeposits(accounts[0]);
             const rate = await instance.rate();
-            const userIndex = deposits[2].toString();
+            const userIndex = deposits[3].toString();
             const userRate = await instance.rates(userIndex);
             rate.toString().should.equal(userRate[0].toString(), "Rates are synced1");
             await instance.setRate(70);
@@ -167,7 +177,7 @@ contract('Rookie', (accounts) => {
             await instance.stake(stake.toString(), {from: accounts[1]});
             const deposits1 = await instance.userDeposits(accounts[1]);
             const rate1 = await instance.rate();
-            const userIndex1 = deposits1[2].toString();
+            const userIndex1 = deposits1[3].toString();
             const userRate1 = await instance.rates(userIndex1);
             rate1.toString().should.equal(userRate1[0].toString(), "Rates are synced2");
         })
