@@ -210,15 +210,17 @@ contract('Legendary', (accounts) => {
             rate1.toString().should.equal(userRate1[0].toString(), "Rates are synced2");
         })
 
-        it('makes user eligible if staked', async() => {
+        it('makes user eligible if staked more than eligibleAmount', async() => {
             const amount = 6000000000000000000;
             const stake = 2000000000000000000;
+            const eligibility = 1000000000000000000;
             await token.transfer(accounts[4], amount.toString());
             await token.approve(rookie.address, stake.toString(),{from: accounts[4]});
             await token.approve(professional.address, stake.toString(), {from: accounts[4]});
             await rookie.stake(stake.toString(), {from: accounts[4]});
             await professional.stake(stake.toString(), {from: accounts[4]});
             await token.approve(instance.address, stake.toString(), {from: accounts[4]});
+            await instance.setEligibilityAmount(eligibility.toString());
             await instance.stake(stake.toString(), {from: accounts[4]});
             const eligible = await instance.eligibility(accounts[4]);
             eligible.should.equal(true, "Eligibility set");

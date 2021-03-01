@@ -277,6 +277,12 @@ contract Legendary_v8 is Ownable {
         return deposits[user_].eligible;
     }
 
+    function setEligibilityAmount(
+        uint256 eligibilityAmount_ //external
+    ) public onlyOwner {
+        eligibilityAmount = eligibilityAmount_;
+    }
+
     /**
      *  Requirements:
      *  `rewardAmount` rewards to be added to the staking contract
@@ -352,6 +358,10 @@ contract Legendary_v8 is Ownable {
         }
 
         hasStaked[from] = true;
+        bool stakerEligibility;
+        if (amount >= eligibilityAmount) {
+            stakerEligibility = true;
+        }
 
         deposits[from] = Deposits(
             amount,
@@ -359,7 +369,7 @@ contract Legendary_v8 is Ownable {
             block.timestamp.add(lockDuration), //(lockDuration * 24 * 3600)
             index,
             false,
-            true
+            stakerEligibility
         );
 
         emit Staked(tokenAddress, from, amount);
