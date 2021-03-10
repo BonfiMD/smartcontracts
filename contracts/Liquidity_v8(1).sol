@@ -1,3 +1,4 @@
+// Liquidity contract with pegged value
 pragma solidity ^0.5.0;
 
 /**
