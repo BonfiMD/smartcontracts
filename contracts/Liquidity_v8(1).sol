@@ -241,7 +241,10 @@ contract Liquidity_v8 is Ownable {
         name = name_;
         require(tokenAddress_ != address(0), "Token address: 0 address");
         tokenAddress = tokenAddress_;
-        require(rewardTokenAddress_ != address(0), "Token address: 0 address");
+        require(
+            rewardTokenAddress_ != address(0),
+            "Reward token address: 0 address"
+        );
         rewardTokenAddress = rewardTokenAddress_;
         require(rate_ != 0, "Zero interest rate");
         rate = rate_;
@@ -252,7 +255,7 @@ contract Liquidity_v8 is Ownable {
     /**
      * @dev to set interest rates
      */
-    function setRate(uint64 rate_) public onlyOwner {
+    function setRate(uint64 rate_) external onlyOwner {
         require(rate_ != 0, "Zero interest rate");
         index++;
         rates[index] = Rates(rate_, block.timestamp);
@@ -264,7 +267,7 @@ contract Liquidity_v8 is Ownable {
      *  `lockduration_' lock days
      *  @dev to set lock duration days
      */
-    function changeLockDuration(uint256 lockduration_) public onlyOwner {
+    function changeLockDuration(uint256 lockduration_) external onlyOwner {
         lockDuration = lockduration_;
     }
 
@@ -273,7 +276,7 @@ contract Liquidity_v8 is Ownable {
      * once the allowance is given to this contract for 'rewardAmount' by the user
      */
     function addReward(uint256 rewardAmount)
-        public
+        external
         _hasAllowance(msg.sender, rewardAmount, rewardTokenAddress)
         returns (bool)
     {
@@ -291,7 +294,7 @@ contract Liquidity_v8 is Ownable {
      * @dev returns user staking data
      */
     function userDeposits(address user)
-        public
+        external
         view
         returns (
             uint256,
@@ -320,7 +323,7 @@ contract Liquidity_v8 is Ownable {
      * once the user has given allowance to the staking contract
      */
     function stake(uint256 amount)
-        public
+        external
         _hasAllowance(msg.sender, amount, tokenAddress)
         returns (bool)
     {
@@ -353,7 +356,7 @@ contract Liquidity_v8 is Ownable {
     /**
      * @dev to withdraw user stakings after the lock period ends.
      */
-    function withdraw() public returns (bool) {
+    function withdraw() external returns (bool) {
         address from = msg.sender;
         require(hasStaked[from] == true, "No stakes found for user");
         require(
@@ -371,14 +374,16 @@ contract Liquidity_v8 is Ownable {
         uint256 amount = deposits[from].depositAmount;
         require(reward <= rewardBalance, "Not enough rewards");
 
+        stakedBalance = stakedBalance.sub(amount);
+        rewardBalance = rewardBalance.sub(reward);
+        deposits[from].paid = true;
+        hasStaked[from] = false; //Check-Effects-Interactions pattern
+
         bool principalPaid = _payDirect(from, amount, tokenAddress);
         bool rewardPaid = _payDirect(from, reward, rewardTokenAddress);
         require(principalPaid && rewardPaid, "Error paying");
         emit PaidOut(tokenAddress, rewardTokenAddress, from, amount, reward);
-        stakedBalance = stakedBalance.sub(amount);
-        rewardBalance = rewardBalance.sub(reward);
-        deposits[from].paid = true;
-        hasStaked[from] = false;
+
         return true;
     }
 
@@ -398,12 +403,37 @@ contract Liquidity_v8 is Ownable {
         return (getReserves.mul(10**18).div(totalSupply));
     }
 
+    function emergencyWithdraw() external returns (bool) {
+        address from = msg.sender;
+        require(hasStaked[from] == true, "No stakes found for user");
+        require(
+            block.timestamp >= deposits[from].endTime,
+            "Requesting before lock time"
+        );
+        require(deposits[from].paid == false, "Already paid out");
+
+        return (_emergencyWithdraw(from));
+    }
+
+    function _emergencyWithdraw(address from) private returns (bool) {
+        uint256 amount = deposits[from].depositAmount;
+        stakedBalance = stakedBalance.sub(amount);
+        deposits[from].paid = true;
+        hasStaked[from] = false; //Check-Effects-Interactions pattern
+
+        bool principalPaid = _payDirect(from, amount, tokenAddress);
+        require(principalPaid, "Error paying");
+        emit PaidOut(tokenAddress, address(0), from, amount, 0);
+
+        return true;
+    }
+
     /**
      * @param
      * 'from' user wallet address
      * @dev to calculate the rewards based on user staked 'amount'
      */
-    function calculate(address from) public view returns (uint256) {
+    function calculate(address from) external view returns (uint256) {
         return _calculate(from);
     }
 

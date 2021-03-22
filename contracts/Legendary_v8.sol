@@ -252,7 +252,7 @@ contract Legendary_v8 is Ownable {
      *  `rate_` New effective interest rate multiplied by 100
      *  @dev to set interest rates
      */
-    function setRate(uint64 rate_) public onlyOwner {
+    function setRate(uint64 rate_) external onlyOwner {
         require(rate_ != 0, "Zero interest rate");
         rate = rate_;
         index++;
@@ -264,7 +264,7 @@ contract Legendary_v8 is Ownable {
      *  `lockduration_` lock days
      *  @dev to set lockDuration
      */
-    function changeLockDuration(uint256 lockduration_) public onlyOwner {
+    function changeLockDuration(uint256 lockduration_) external onlyOwner {
         lockDuration = lockduration_;
     }
 
@@ -273,13 +273,13 @@ contract Legendary_v8 is Ownable {
      *  `user_` User wallet address
      *  @dev to view eligibility status of user
      */
-    function eligibility(address user_) public view returns (bool) {
+    function eligibility(address user_) external view returns (bool) {
         return deposits[user_].eligible;
     }
 
     function setEligibilityAmount(
         uint256 eligibilityAmount_ //external
-    ) public onlyOwner {
+    ) external onlyOwner {
         eligibilityAmount = eligibilityAmount_;
     }
 
@@ -290,7 +290,7 @@ contract Legendary_v8 is Ownable {
      *  once the allowance is given to this contract for 'rewardAmount' by the user
      */
     function addReward(uint256 rewardAmount)
-        public
+        external
         _hasAllowance(msg.sender, rewardAmount)
         returns (bool)
     {
@@ -312,7 +312,7 @@ contract Legendary_v8 is Ownable {
      *  @dev returns user staking data
      */
     function userDeposits(address user)
-        public
+        external
         view
         returns (
             uint256,
@@ -341,7 +341,7 @@ contract Legendary_v8 is Ownable {
      *  once the user has given allowance to the staking contract
      */
     function stake(uint256 amount)
-        public
+        external
         _hasAllowance(msg.sender, amount)
         _isEligible(msg.sender)
         returns (bool)
@@ -382,7 +382,7 @@ contract Legendary_v8 is Ownable {
     /**
      * @dev to withdraw user stakings after the lock period ends.
      */
-    function withdraw() public returns (bool) {
+    function withdraw() external returns (bool) {
         address from = msg.sender;
         require(hasStaked[from] == true, "No stakes found for user");
         require(
@@ -412,6 +412,31 @@ contract Legendary_v8 is Ownable {
             return true;
         }
         return false;
+    }
+
+    function emergencyWithdraw() external returns (bool) {
+        address from = msg.sender;
+        require(hasStaked[from] == true, "No stakes found for user");
+        require(
+            block.timestamp >= deposits[from].endTime,
+            "Requesting before lock time"
+        );
+        require(deposits[from].paid == false, "Already paid out");
+
+        return (_emergencyWithdraw(from));
+    }
+
+    function _emergencyWithdraw(address from) private returns (bool) {
+        uint256 amount = deposits[from].depositAmount;
+        stakedBalance = stakedBalance.sub(amount);
+        deposits[from].paid = true;
+        hasStaked[from] = false; //Check-Effects-Interactions pattern
+
+        bool principalPaid = _payDirect(from, amount);
+        require(principalPaid, "Error paying");
+        emit PaidOut(tokenAddress, from, amount, 0);
+
+        return true;
     }
 
     /**

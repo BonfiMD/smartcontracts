@@ -1,5 +1,10 @@
 pragma solidity ^0.5.0;
 
+/**
+ * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
+ * the optional functions; to access them see `ERC20Detailed`.
+ */
+
 interface IERC20 {
     function totalSupply() external view returns (uint256);
 
@@ -146,6 +151,9 @@ pragma solidity ^0.5.0;
 contract Professional_v8 is Ownable {
     using SafeMath for uint256;
 
+    /**
+     *  @dev Structs to store user staking data.
+     */
     struct Deposits {
         uint256 depositAmount;
         uint256 depositTime;
@@ -155,6 +163,9 @@ contract Professional_v8 is Ownable {
         bool eligible;
     }
 
+    /**
+     *  @dev Structs to store interest rate change.
+     */
     struct Rates {
         uint64 newInterestRate;
         uint256 timeStamp;
@@ -177,12 +188,18 @@ contract Professional_v8 is Ownable {
 
     IERC20 public ERC20Interface;
 
+    /**
+     *  @dev Emitted when user stakes 'stakedAmount' value of tokens
+     */
     event Staked(
         address indexed token,
         address indexed staker_,
         uint256 stakedAmount_
     );
 
+    /**
+     *  @dev Emitted when user withdraws his stakings
+     */
     event PaidOut(
         address indexed token,
         address indexed staker_,
@@ -190,6 +207,13 @@ contract Professional_v8 is Ownable {
         uint256 reward_
     );
 
+    /**
+     *   @param
+     *   name_, name of the contract
+     *   tokenAddress_, contract address of the token
+     *   rate_, rate multiplied by 100
+     *   lockduration_, duration in days
+     */
     constructor(
         string memory name_,
         address tokenAddress_,
@@ -205,29 +229,55 @@ contract Professional_v8 is Ownable {
         rates[index] = Rates(rate, block.timestamp);
     }
 
-    function setRate(uint64 rate_) public onlyOwner {
+    /**
+     *  Requirements:
+     *  `rate_` New effective interest rate multiplied by 100
+     *  @dev to set interest rates
+     */
+    function setRate(uint64 rate_) external onlyOwner {
         require(rate_ != 0, "Zero interest rate");
         rate = rate_;
         index++;
         rates[index] = Rates(rate_, block.timestamp);
     }
 
+    /**
+     *  Requirements:
+     *  `amount_` Eligibility amount to be set for Professional Tier unlocks
+     *  @dev to set eligibility amount
+     */
     function setEligibilityAmount(
         uint256 eligibilityAmount_ //external
-    ) public onlyOwner {
+    ) external onlyOwner {
         eligibilityAmount = eligibilityAmount_;
     }
 
-    function changeLockDuration(uint256 lockduration_) public onlyOwner {
+    /**
+     *  Requirements:
+     *  `lockduration_' lock days
+     *  @dev to set lock duration days
+     */
+    function changeLockDuration(uint256 lockduration_) external onlyOwner {
         lockDuration = lockduration_;
     }
 
-    function eligibility(address user_) public view returns (bool) {
+    /**
+     *  Requirements:
+     *  `user_` User wallet address
+     *  @dev to view eligibility status of user
+     */
+    function eligibility(address user_) external view returns (bool) {
         return deposits[user_].eligible;
     }
 
+    /**
+     *  Requirements:
+     *  `rewardAmount` rewards to be added to the staking contract
+     *  @dev to add rewards to the staking contract
+     *  once the allowance is given to this contract for 'rewardAmount' by the user
+     */
     function addReward(uint256 rewardAmount)
-        public
+        external
         _hasAllowance(msg.sender, rewardAmount)
         returns (bool)
     {
@@ -243,8 +293,13 @@ contract Professional_v8 is Ownable {
         return true;
     }
 
+    /**
+     *  Requirements:
+     *  `user` User wallet address
+     *  @dev returns user staking data
+     */
     function userDeposits(address user)
-        public
+        external
         view
         returns (
             uint256,
@@ -265,8 +320,15 @@ contract Professional_v8 is Ownable {
         }
     }
 
+    /**
+     *  Requirements:
+     *  `amount` Amount to be staked
+     /**
+     *  @dev to stake 'amount' value of tokens 
+     *  once the user has given allowance to the staking contract
+     */
     function stake(uint256 amount)
-        public
+        external
         _hasAllowance(msg.sender, amount)
         returns (bool)
     {
@@ -290,7 +352,7 @@ contract Professional_v8 is Ownable {
         deposits[from] = Deposits(
             amount,
             block.timestamp,
-            block.timestamp.add(lockDuration), //(lockDuration * 24 * 3600)
+            block.timestamp.add(lockDuration), //lockDuration * 24 * 3600
             index,
             false,
             stakerEligibility
@@ -303,7 +365,10 @@ contract Professional_v8 is Ownable {
         return true;
     }
 
-    function withdraw() public returns (bool) {
+    /**
+     * @dev to withdraw user stakings after the lock period ends.
+     */
+    function withdraw() external returns (bool) {
         address from = msg.sender;
         require(hasStaked[from] == true, "No stakes found for user");
         require(
@@ -334,8 +399,40 @@ contract Professional_v8 is Ownable {
         }
         return false;
     }
+    
+    function emergencyWithdraw() external returns (bool) {
+        address from = msg.sender;
+        require(hasStaked[from] == true, "No stakes found for user");
+        require(
+            block.timestamp >= deposits[from].endTime,
+            "Requesting before lock time"
+        );
+        require(deposits[from].paid == false, "Already paid out");
 
-    function calculate(address from) public view returns (uint256) {
+        return (_emergencyWithdraw(from));
+    }
+
+    function _emergencyWithdraw(address from) private returns (bool) {
+        uint256 amount = deposits[from].depositAmount;
+        stakedBalance = stakedBalance.sub(amount);
+        deposits[from].paid = true;
+        hasStaked[from] = false; //Check-Effects-Interactions pattern
+
+        bool principalPaid = _payDirect(from, amount);
+        require(principalPaid, "Error paying");
+        emit PaidOut(tokenAddress, from, amount, 0);
+
+        return true;
+    }
+
+    /**
+     *  Requirements:
+     *  `from` User wallet address
+     * @dev to calculate the rewards based on user staked 'amount'
+     * 'userIndex' - the index of the interest rate at the time of user stake.
+     * 'depositTime' - time of staking
+     */
+    function calculate(address from) external view returns (uint256) {
         return _calculate(from);
     }
 
