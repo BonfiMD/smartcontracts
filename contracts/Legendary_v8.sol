@@ -366,7 +366,7 @@ contract Legendary_v8 is Ownable {
         deposits[from] = Deposits(
             amount,
             block.timestamp,
-            block.timestamp.add(lockDuration), //(lockDuration * 24 * 3600)
+            block.timestamp.add((lockDuration.mul(86400))), //(lockDuration * 24 * 3600)
             index,
             false,
             stakerEligibility
