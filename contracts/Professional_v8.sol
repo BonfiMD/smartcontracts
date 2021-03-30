@@ -399,7 +399,7 @@ contract Professional_v8 is Ownable {
         }
         return false;
     }
-    
+
     function emergencyWithdraw() external returns (bool) {
         address from = msg.sender;
         require(hasStaked[from] == true, "No stakes found for user");
@@ -417,6 +417,9 @@ contract Professional_v8 is Ownable {
         stakedBalance = stakedBalance.sub(amount);
         deposits[from].paid = true;
         hasStaked[from] = false; //Check-Effects-Interactions pattern
+        if (deposits[from].eligible) {
+            deposits[from].eligible = false;
+        }
 
         bool principalPaid = _payDirect(from, amount);
         require(principalPaid, "Error paying");

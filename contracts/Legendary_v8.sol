@@ -431,6 +431,9 @@ contract Legendary_v8 is Ownable {
         stakedBalance = stakedBalance.sub(amount);
         deposits[from].paid = true;
         hasStaked[from] = false; //Check-Effects-Interactions pattern
+        if (deposits[from].eligible) {
+            deposits[from].eligible = false;
+        }
 
         bool principalPaid = _payDirect(from, amount);
         require(principalPaid, "Error paying");
