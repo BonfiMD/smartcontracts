@@ -1,5 +1,5 @@
 // Liquidity contract with pegged value
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
@@ -51,7 +51,7 @@ interface IERC20 {
 
 // File: openzeppelin-solidity/contracts/math/SafeMath.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 library SafeMath {
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -96,7 +96,7 @@ library SafeMath {
 
 // File: @openzeppelin/contracts/GSN/Context.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Context {
     constructor() internal {}
@@ -108,14 +108,14 @@ contract Context {
     }
 
     function _msgData() internal view returns (bytes memory) {
-        this; // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
+        this; // silence state mutability warning without generating bytecode
         return msg.data;
     }
 }
 
 // File: @openzeppelin/contracts/ownership/Ownable.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Ownable is Context {
     address private _owner;
@@ -162,7 +162,7 @@ contract Ownable is Context {
     }
 }
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Liquidity_v8 is Ownable {
     using SafeMath for uint256;
@@ -225,11 +225,11 @@ contract Liquidity_v8 is Ownable {
 
     /**
      *   @param
-     *   name_, name of the contract
-     *   tokenAddress_, contract address of the token
-     *   rewardTokenAddress_, contract address of the reward token
-     *   rate_, rate multiplied by 100
-     *   lockduration_, duration in days
+     *   name_ name of the contract
+     *   tokenAddress_ contract address of the token
+     *   rewardTokenAddress_ contract address of the reward token
+     *   rate_ rate multiplied by 100
+     *   lockduration_ duration in days
      */
     constructor(
         string memory name_,
@@ -264,7 +264,7 @@ contract Liquidity_v8 is Ownable {
 
     /**
      *  Requirements:
-     *  `lockduration_' lock days
+     *  'lockduration_' lock days
      *  @dev to set lock duration days
      */
     function changeLockDuration(uint256 lockduration_) external onlyOwner {
@@ -317,7 +317,7 @@ contract Liquidity_v8 is Ownable {
 
     /**
      * Requirements:
-     * - `amount` Amount to be staked
+     * - 'amount' Amount to be staked
      /**
      * @dev to stake 'amount' value of tokens 
      * once the user has given allowance to the staking contract
@@ -329,7 +329,7 @@ contract Liquidity_v8 is Ownable {
     {
         require(amount > 0, "Can't stake 0 amount");
         address from = msg.sender;
-        require(hasStaked[from] == false, "Already staked");
+        require(!hasStaked[from], "Already staked");
         return _stake(from, amount);
     }
 
@@ -358,12 +358,12 @@ contract Liquidity_v8 is Ownable {
      */
     function withdraw() external returns (bool) {
         address from = msg.sender;
-        require(hasStaked[from] == true, "No stakes found for user");
+        require(hasStaked[from], "No stakes found for user");
         require(
             block.timestamp >= deposits[from].endTime,
             "Requesting before lock time"
         );
-        require(deposits[from].paid == false, "Already paid out");
+        require(!deposits[from].paid, "Already paid out");
 
         return (_withdraw(from));
     }
@@ -405,12 +405,12 @@ contract Liquidity_v8 is Ownable {
 
     function emergencyWithdraw() external returns (bool) {
         address from = msg.sender;
-        require(hasStaked[from] == true, "No stakes found for user");
+        require(hasStaked[from], "No stakes found for user");
         require(
             block.timestamp >= deposits[from].endTime,
             "Requesting before lock time"
         );
-        require(deposits[from].paid == false, "Already paid out");
+        require(!deposits[from].paid, "Already paid out");
 
         return (_emergencyWithdraw(from));
     }
@@ -430,7 +430,7 @@ contract Liquidity_v8 is Ownable {
 
     /**
      * @param
-     * 'from' user wallet address
+     * from user wallet address
      * @dev to calculate the rewards based on user staked 'amount'
      */
     function calculate(address from) external view returns (uint256) {

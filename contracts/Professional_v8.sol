@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
@@ -38,7 +38,7 @@ interface IERC20 {
 
 // File: openzeppelin-solidity/contracts/math/SafeMath.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 library SafeMath {
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -80,7 +80,7 @@ library SafeMath {
     }
 }
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Context {
     // Empty internal constructor, to prevent people from mistakenly deploying
@@ -92,14 +92,14 @@ contract Context {
     }
 
     function _msgData() internal view returns (bytes memory) {
-        this; // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
+        this; // silence state mutability warning without generating bytecode
         return msg.data;
     }
 }
 
 // File: @openzeppelin/contracts/ownership/Ownable.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Ownable is Context {
     address private _owner;
@@ -146,7 +146,7 @@ contract Ownable is Context {
     }
 }
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.16;
 
 contract Professional_v8 is Ownable {
     using SafeMath for uint256;
@@ -209,10 +209,10 @@ contract Professional_v8 is Ownable {
 
     /**
      *   @param
-     *   name_, name of the contract
-     *   tokenAddress_, contract address of the token
-     *   rate_, rate multiplied by 100
-     *   lockduration_, duration in days
+     *   name_ name of the contract
+     *   tokenAddress_ contract address of the token
+     *   rate_ rate multiplied by 100
+     *   lockduration_ duration in days
      */
     constructor(
         string memory name_,
@@ -334,7 +334,7 @@ contract Professional_v8 is Ownable {
     {
         require(amount > 0, "Can't stake 0 amount");
         address from = msg.sender;
-        require(hasStaked[from] == false, "Already Staked");
+        require(!hasStaked[from], "Already Staked");
         return (_stake(from, amount));
     }
 
@@ -370,12 +370,12 @@ contract Professional_v8 is Ownable {
      */
     function withdraw() external returns (bool) {
         address from = msg.sender;
-        require(hasStaked[from] == true, "No stakes found for user");
+        require(hasStaked[from], "No stakes found for user");
         require(
             block.timestamp >= deposits[from].endTime,
             "Requesting before lock time"
         );
-        require(deposits[from].paid == false, "Already paid out");
+        require(!deposits[from].paid, "Already paid out");
         return (_withdraw(from));
     }
 
@@ -402,12 +402,12 @@ contract Professional_v8 is Ownable {
 
     function emergencyWithdraw() external returns (bool) {
         address from = msg.sender;
-        require(hasStaked[from] == true, "No stakes found for user");
+        require(hasStaked[from], "No stakes found for user");
         require(
             block.timestamp >= deposits[from].endTime,
             "Requesting before lock time"
         );
-        require(deposits[from].paid == false, "Already paid out");
+        require(!deposits[from].paid, "Already paid out");
 
         return (_emergencyWithdraw(from));
     }
